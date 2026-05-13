@@ -1,0 +1,483 @@
+#Import the JSON library
+import json
+
+#Import heapq
+import heapq
+
+#Import the path library, used to get file paths
+from pathlib import Path
+
+#Import fastapi for authentication
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+from fastapi.responses import Response
+
+#Import starlette
+from starlette.middleware.base import BaseHTTPMiddleware
+
+#Import NiceGUI
+from nicegui import app, ui
+from nicegui import Client
+from nicegui.page import page
+
+#Import custom scripts
+import navui
+import logout
+
+#Import A* page
+import astar
+
+#Get the base directory
+base_dir = Path(__file__).parent
+
+#Find file paths
+favicon_path = base_dir / 'avra.jpg'
+passwords_path = base_dir / 'users.json'
+unrestricted_path = base_dir / 'unrestricted.json'
+protected_path = base_dir / 'protected.json'
+admins_path = base_dir / 'admins.json'
+
+#Add static files
+app.add_static_files('/static', str(base_dir / 'static'))
+
+#Read passwords from users.json and save them in passwords
+with open(passwords_path, 'r') as file:
+    passwords = json.load(file)
+
+#Pages anyone can access, even without logging in
+with open(unrestricted_path, 'r') as file:
+    unrestricted_page_routes = json.load(file)
+
+#Protected pages, only users with admin access
+with open(protected_path, 'r') as file:
+    protected = json.load(file)
+
+#Read admin usernames and save them in admins
+with open(admins_path, 'r') as file:
+    admins = json.load(file)
+
+#The A* algorithm
+def astar(start, goal, obstacles, rows, cols):
+    def manhattan(a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    
+    front = []
+    heapq.heappush(front, (0, start))
+    came_from = {start: None}
+    cost = {start: 0}
+
+    while front:
+        _, current = heapq.heappop(front)
+        if current == goal:
+            break
+
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            next_node = (current[0] + dx, current[1] + dy)
+
+            if 0 <= next_node[0] < rows and 0 <= next_node[1] < cols and next_node not in obstacles:
+                new_cost = cost[current] + 1
+                if next_node not in cost or new_cost < cost[next_node]:
+                    cost[next_node] = new_cost
+                    # FIXED: Pass next_node coordinates, not the cost integer
+                    priority = new_cost + manhattan(goal, next_node)
+                    heapq.heappush(front, (priority, next_node))
+                    came_from[next_node] = current
+        
+    path = []
+    current = goal
+    if current not in came_from:
+        return []
+    while current != start:
+        path.append(current)
+        current = came_from[current]
+    path.reverse()
+
+    return path[:-1] if path else []
+
+# Function to convert the path to a matrix representation
+def create_path_matrix(rows, cols, start, goal, path):
+    # Initialize an empty matrix with 0s (representing nothing)
+    matrix = [[0 for _ in range(cols)] for _ in range(rows)]
+    
+    # Mark the path nodes with 3
+    for r, c in path:
+        if 0 <= r < rows and 0 <= c < cols:
+            matrix[r][c] = 3
+            
+    # Mark the start node with 1 (overwrites path if they overlap)
+    if start and 0 <= start[0] < rows and 0 <= start[1] < cols:
+        matrix[start[0]][start[1]] = 1
+        
+    # Mark the goal node with 2 (overwrites path if they overlap)
+    if goal and 0 <= goal[0] < rows and 0 <= goal[1] < cols:
+        matrix[goal[0]][goal[1]] = 2
+        
+    return matrix
+
+#Autentication middleware
+@app.add_middleware
+class AuthMiddleware(BaseHTTPMiddleware):
+
+    #Asynchronous function, DO NOT CHANGE THE NAME, IT MUST BE dispatch
+    async def dispatch(self, request: Request, call_next):
+
+        #If not logged in (looking for the 'authenticated' key, if not found it returns False)
+        if not app.storage.user.get('authenticated', False):
+
+            #URL checks
+            if not request.url.path.startswith('/_nicegui') and not request.url.path.startswith('/static')and request.url.path not in unrestricted_page_routes:
+
+                #Redirected to login
+                return RedirectResponse(f'/login?redirect_to={request.url.path}')
+
+        return await call_next(request)
+
+#Admin access middleware
+@app.add_middleware
+class AdminMiddleware(BaseHTTPMiddleware):
+
+    #Asynchronous function, DO NOT CHANGE THE NAME, IT MUST BE dispatch
+    async def dispatch(self, request: Request, call_next):
+
+        #Check if page is protected
+        if request.url.path in protected:
+
+            #Check if user is an not admin
+            if not app.storage.user.get('admin', False):
+                
+                #Send user back to login (logged in users are redirected again to '/')
+                return RedirectResponse(f'/login?redirect_to={request.url.path}')
+
+        return await call_next(request)
+
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exception: Exception) -> Response:
+    
+    # Create a temporary NiceGUI page context for the error
+    with Client(page(''), request=request) as client:
+        
+        # 1. Load your awesome new checkerboard background!
+        ui.add_head_html('<link rel="stylesheet" href="/static/backdrop.css?v=1">')
+        
+        # 2. Build the Error UI
+        with ui.card().classes('absolute-center items-center p-8'):
+            ui.label('404').classes('text-6xl font-bold text-gray-800')
+            ui.label('Oops! We could not find that page.').classes('text-xl mb-4')
+            
+            # 3. Give them a way back home
+            ui.button('Go to Dashboard', on_click=lambda: ui.navigate.to('/'))
+            
+    # Return the fully built NiceGUI page with a 404 status code
+    return client.build_response(request, 404)
+
+#Create a page with name '/' and title 'Home'
+@ui.page('/',title = 'Home')
+def main_page() -> None:
+
+    navui.navigation_ui("Home")
+
+    with ui.card():
+
+        #Make a column
+        with ui.column().classes('p-8'):
+            ui.label('Welcome to the main content area!').classes('text-2xl')
+            ui.label(f"You are logged in as: {app.storage.user.get('username')}")
+            ui.label('Click the hamburger icon in the top left to open the menu.')
+
+            #The log out button
+            ui.button(on_click=logout.logout, icon='logout', text='Log out')
+
+#Create a page with name 'subpage'
+@ui.page('/subpage')
+def test_page() -> None:
+    ui.label('This is a sub page.')
+
+#Create a page with name 'login' and title 'Log In'
+@ui.page('/login', title = 'Log In')
+def login(redirect_to: str = '/') -> RedirectResponse | None:
+
+    with open(passwords_path, 'r') as file:
+        passwords = json.load(file)
+
+    #Login function
+    def try_login() -> None:
+
+        #Check if given password mathes the actual password
+        if passwords.get(username.value) == password.value:
+
+            #Check if user is an admin
+            if username.value in admins:
+
+                #Seve cookies
+                app.storage.user.update({'username': username.value, 'authenticated': True, 'admin': True})
+
+                #Redirect user where they wanted to go
+                ui.navigate.to(redirect_to)
+            else:
+
+                #Seve cookies
+                app.storage.user.update({'username': username.value, 'authenticated': True, 'admin': False})
+
+                #Redirect user where they wanted to go
+                ui.navigate.to(redirect_to)
+        else:
+
+            #Wrong username or password notification
+            ui.notify('Wrong username or password', color='negative')
+
+    #Add the background stylesheet to the HTML header
+    ui.add_head_html('<link rel="stylesheet" href="/static/backdrop.css">')
+
+    #Check wether the user is authenticated
+    if app.storage.user.get('authenticated', False):
+    
+        #Is authenticated, redirect to '/'
+        return RedirectResponse('/')
+    
+    #Make the card for the login imput boxes
+    with ui.card().classes('absolute-center'):
+
+        #Username input box
+        username = ui.input('Username').on('keydown.enter', try_login)
+
+        #Password input box
+        password = ui.input('Password', password=True, password_toggle_button=True).on('keydown.enter', try_login)
+
+        #Login button
+        ui.button('Log in', on_click=try_login)
+    
+    return None
+
+#Create page with name 'protected'
+@ui.page('/protected')
+def protected_page() -> None:
+    ui.label("Hi admin!")
+
+@ui.page('/dashboard')
+def robot_dashboard():
+    
+    navui.navigation_ui("Dashborard")
+
+    # Use a dark mode theme to make it look like a cool control panel
+    ui.dark_mode().enable()
+
+    # 1. Main container: 
+    # h-[calc(100vh-110px)] perfectly calculates the screen height minus the header and padding!
+    # grid-rows-[2fr_1fr] keeps your top row taller than your bottom row automatically.
+    with ui.element('div').classes('w-full h-[calc(100vh-110px)] grid grid-cols-4 grid-rows-[2fr_1fr] gap-4 p-4'):
+
+        # --- TOP ROW ---
+        
+        # Video Feed
+        # Changed min-h-[400px] to h-full
+        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
+            ui.label('Video feed').classes('text-3xl tracking-widest text-gray-400')
+
+        # LiDAR
+        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
+            ui.label('LiDAR').classes('text-3xl tracking-widest text-gray-400')
+
+
+        # --- BOTTOM ROW ---
+        
+        # Compass
+        # Changed min-h-[250px] to h-full
+        with ui.card().classes('col-span-1 h-full items-center justify-center border border-gray-700'):
+            # Made the circle dynamically scale instead of hardcoded 48x48
+            with ui.element('div').classes('aspect-square h-[80%] max-h-[200px] rounded-full border-2 border-gray-400 flex items-center justify-center'):
+                ui.label('Compass').classes('text-xl tracking-widest text-gray-400')
+
+        # Speed, Battery, Mode
+        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
+            ui.label('Speed, Battery, Mode').classes('text-3xl tracking-widest text-gray-400')
+
+        def waypoints() -> None:
+            print("Waypoints")
+
+        # Map
+        with ui.card().classes('col-span-1 h-full items-center justify-center border border-gray-700'):
+            ui.leaflet(center=(51.505, -0.09))
+
+@ui.page('/signup', title='Sign Up')
+def signup():
+
+    navui.navigation_ui("Add user")
+    
+    def try_signup() -> None:
+
+        if password.value != confirm_password.value:
+            ui.notify('Passwords do not match!', color='negative')
+            return
+            
+        if not username.value or not password.value:
+            ui.notify('Please fill in all fields', color='negative')
+            return
+
+        with open(passwords_path, 'r') as file:
+            current_users = json.load(file)
+
+        if username.value in current_users:
+            ui.notify('Username is already taken!', color='negative')
+            return
+
+        current_users[username.value] = password.value
+        
+        with open(passwords_path, 'w') as file:
+
+            json.dump(current_users, file, indent=4)
+
+        ui.notify('Account created successfully! You can now log in.', color='positive')
+        ui.navigate.to('/login')
+
+    # Add your awesome checkerboard background
+    ui.add_head_html('<link rel="stylesheet" href="/static/backdrop.css">')
+
+    # Build the Sign Up Card
+    with ui.card().classes('absolute-center items-center p-6'):
+        ui.label('Add new user').classes('text-2xl font-bold mb-4')
+        
+        username = ui.input('Username').on('keydown.enter', try_signup).classes('w-full')
+        password = ui.input('Password', password=True, password_toggle_button=True).on('keydown.enter', try_signup).classes('w-full')
+        confirm_password = ui.input('Confirm Password', password=True, password_toggle_button=True).on('keydown.enter', try_signup).classes('w-full mb-4')
+        
+        with ui.row().classes('w-full justify-between mt-2'):
+            ui.button('Back to Homepage', on_click=lambda: ui.navigate.to('/')).props('flat')
+            ui.button('Add', on_click=try_signup)
+
+@ui.page('/about',title='About')
+def about():
+    
+    navui.navigation_ui('About')
+
+    with ui.card().classes('absolute-center items-center p-6'):
+        ui.label('AVRA AUTh GUI')
+
+#Tello code
+def build_commands_file(matrix):
+    n=len(matrix)
+    for i in range(n):
+        print(matrix[i][:])
+
+@ui.page('/analysis',title='A*')
+def analysis():
+    ui.add_head_html('<style>.q-btn .q-focus-helper { display: none !important; }</style>')
+    state = {
+    'start': None,
+    'goal': None,
+    'obstacles': set(),
+    'path': []
+    }
+
+    cells = {}
+
+    def update_grid():
+        for (r, c), btn in cells.items():
+            if (r, c) == state['start']:
+                btn.props('color=green')
+            elif (r, c) == state['goal']:
+                btn.props('color=red')
+            elif (r, c) in state['obstacles']:
+                btn.props('color=dark')
+            elif (r, c) in state['path']:
+                btn.props('color=blue')
+            else:
+                btn.props('color=grey-4')
+
+    def cell_clicked(r, c):
+        mode=mode_toggle.value
+        pos=(r, c)
+        
+        state['path']=[]
+        
+        if mode=='Start':
+            if pos in state['obstacles']: state['obstacles'].remove(pos)
+            if pos==state['goal']: state['goal']=None
+            state['start'] = pos
+            
+        elif mode=='Goal':
+            if pos in state['obstacles']: state['obstacles'].remove(pos)
+            if pos==state['start']: state['start']=None
+            state['goal'] = pos
+            
+        elif mode=='Obstacle':
+            if pos==state['start']: state['start']=None
+            if pos==state['goal']: state['goal']=None
+            state['obstacles'].add(pos)
+            
+        elif mode=='Erase':
+            if pos==state['start']: state['start']=None
+            if pos==state['goal']: state['goal']=None
+            if pos in state['obstacles']: state['obstacles'].remove(pos)
+            
+        update_grid()
+
+    def solve():
+        if not state['start'] or not state['goal']:
+            ui.notify('Please set both a Start and a Goal!', type='warning')
+            return
+        
+        state['path'] = astar(
+            state['start'], 
+            state['goal'], 
+            state['obstacles'], 
+            int(rows_input.value), 
+            int(cols_input.value)
+        )
+
+        state['matrix'] = create_path_matrix(
+            int(rows_input.value), 
+            int(cols_input.value), 
+            state['start'], 
+            state['goal'], 
+            state['path']
+        )
+        
+        if not state['path']:
+            ui.notify('No path found! Obstacles might be blocking the way.', type='negative')
+        else:
+            ui.notify('Optimal path found!', type='positive')
+            
+        update_grid()
+
+    def clear_grid():
+        state['start'] = None
+        state['goal'] = None
+        state['obstacles'].clear()
+        state['path'].clear()
+        update_grid()
+
+    ui.label("A* Pathfinding Interface").classes('text-2xl font-bold mb-2 mt-4')
+
+    with ui.row().classes('items-center mb-4'):
+        mode_toggle=ui.toggle(['Start', 'Goal', 'Obstacle', 'Erase'], value='Obstacle').classes('mr-4')
+        ui.button('Find Path', on_click=solve, color='green')
+        ui.button('Clear Map', on_click=clear_grid, color='red').props('outline')
+        ui.button('Send to Tello', on_click=lambda: build_commands_file(state['matrix']))
+
+    def change_size():
+        clear_grid()
+        draw_grid.refresh()
+
+    with ui.row().classes('items-center mb-4'):
+        rows_input=ui.number(label='Number of rows', value=15).props('min=5 max=50 step=1')
+        cols_input =ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
+        ui.button('Change size', on_click=change_size)
+
+    @ui.refreshable
+    def draw_grid():
+        cells.clear()
+        with ui.card().classes('p-2 bg-gray-50'):
+            with ui.grid(columns=int(cols_input.value)).classes('gap-0.5'):
+                for r in range(int(rows_input.value)):
+                    for c in range(int(cols_input.value)):
+                        btn = ui.button(on_click=lambda e, r=r, c=c: cell_clicked(r, c), color='grey-4')
+                        btn.props('unelevated square padding="none" :ripple="false"').classes('w-8 h-8')
+                        cells[(r, c)] = btn
+        update_grid()
+
+    draw_grid()
+
+if __name__ in {'__main__', '__mp_main__'}:
+
+    #Run the GUI on localhost:8080
+    ui.run(storage_secret='THIS_NEEDS_TO_BE_CHANGED',show=False,port=8080,favicon=favicon_path,uvicorn_reload_dirs=f"{base_dir},{base_dir / '.nicegui'}",uvicorn_reload_includes='*.py,*.css,*.html,*.js,*.vue')
