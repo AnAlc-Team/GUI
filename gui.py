@@ -11,21 +11,29 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 
 #Import starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 
 #Import NiceGUI
-from nicegui import app, ui
+from nicegui import app, ui, run
 from nicegui import Client
 from nicegui.page import page
+
+#Import OpenCV for decoding the stream
+import cv2
+
+#Libraries for displaying the stream
+import asyncio
+import time
 
 #Import custom scripts
 import navui
 import logout
 
-#Import A* page
-import astar
+#Import the Tello script
+from tello import Tello
 
 #Get the base directory
 base_dir = Path(__file__).parent
@@ -112,7 +120,128 @@ def create_path_matrix(rows, cols, start, goal, path):
     if goal and 0 <= goal[0] < rows and 0 <= goal[1] < cols:
         matrix[goal[0]][goal[1]] = 2
         
-    return matrix
+    commandgen(matrix)
+
+def commandgen(matrix, filename="command.txt"):
+    start_x = -1
+    start_y = -1
+    rows = len(matrix)
+    cols = len(matrix[0])
+    
+    # Find the starting position
+    for i in range(rows):
+        for j in range(cols):
+            if matrix[i][j] == 1:
+                start_x = j
+                start_y = i
+
+    cx = start_x
+    cy = start_y
+    
+    with open(filename, 'w') as f:
+
+        f.write("command\n")
+        f.write("streamon\n")
+        f.write("takeoff\n")
+        f.write("delay 5\n")
+
+        while matrix[cy][cx] != 2:
+
+            #Zero checked elements so we don't go backwards
+            if matrix[cy][cx] != 2:
+                matrix[cy][cx] = 0
+
+            moved = False
+
+            if cy + 1 < rows and matrix[cy+1][cx] == 3:
+                f.write("back 20\n")
+                cy += 1
+                moved = True
+            elif cy - 1 >= 0 and matrix[cy-1][cx] == 3:
+                f.write("forward 20\n")
+                cy -= 1
+                moved = True
+            elif cx - 1 >= 0 and matrix[cy][cx-1] == 3:
+                f.write("left 20\n")
+                cx -= 1
+                moved = True
+            elif cx + 1 < cols and matrix[cy][cx+1] == 3:
+                f.write("right 20\n")
+                cx += 1
+                moved = True
+            else:
+                #Look for the goal
+                if cy + 1 < rows and matrix[cy+1][cx] == 2:
+                    f.write("back 20\n")
+                    cy += 1
+                    moved = True
+                elif cy - 1 >= 0 and matrix[cy-1][cx] == 2:
+                    f.write("forward 20\n")
+                    cy -= 1
+                    moved = True
+                elif cx - 1 >= 0 and matrix[cy][cx-1] == 2:
+                    f.write("left 20\n")
+                    cx -= 1
+                    moved = True
+                elif cx + 1 < cols and matrix[cy][cx+1] == 2:
+                    f.write("right 20\n")
+                    cx += 1
+                    moved = True
+
+            if not moved:
+                print("Warning: commandgen got stuck. Breaking loop to prevent freeze.")
+                break
+        
+        f.write("flip f\n")
+        f.write("delay 5\n")
+        f.write("land")
+
+
+#Video Streamer class
+class VideoStreamer:
+    def __init__(self):
+        self.cap = None
+        self.running = False
+
+    def start(self):
+        self.running = True
+        # Open the UDP stream using FFmpeg backend
+        self.cap = cv2.VideoCapture("udp://@0.0.0.0:11111", cv2.CAP_FFMPEG)
+
+    def stop(self):
+        self.running = False
+        if self.cap:
+            self.cap.release()
+
+    def generate_frames(self):
+        while self.running:
+            if self.cap and self.cap.isOpened():
+                success, frame = self.cap.read()
+                if success:
+                    #Optional: Resize to reduce browser CPU load
+                    frame = cv2.resize(frame, (640, 480))
+                    #Encode frame as JPEG
+                    ret, buffer = cv2.imencode('.jpg', frame)
+                    if ret:
+                        #Yield the frame in MJPEG format
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+            else:
+                #Sleep if stream isn't active
+                time.sleep(0.1)
+
+#Video Streamer object
+streamer=VideoStreamer()
+
+#FastAPI route for the MPEG stream
+@app.get('/video_stream')
+def video_stream():
+    return StreamingResponse(streamer.generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
+
+# Create a FastAPI route to serve the MJPEG stream
+@app.get('/video_stream')
+def video_stream():
+    return StreamingResponse(streamer.generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
 
 #Autentication middleware
 @app.add_middleware
@@ -258,45 +387,48 @@ def robot_dashboard():
     
     navui.navigation_ui("Dashborard")
 
-    # Use a dark mode theme to make it look like a cool control panel
+    #Enable dark mode
     ui.dark_mode().enable()
 
-    # 1. Main container: 
-    # h-[calc(100vh-110px)] perfectly calculates the screen height minus the header and padding!
-    # grid-rows-[2fr_1fr] keeps your top row taller than your bottom row automatically.
-    with ui.element('div').classes('w-full h-[calc(100vh-110px)] grid grid-cols-4 grid-rows-[2fr_1fr] gap-4 p-4'):
+    with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700 bg-black p-0 overflow-hidden'):
+            #Pull from the FastAPI route
+            ui.html('<img src="/video_stream" style="width: 100%; height: 100%; object-fit: contain;">')
 
-        # --- TOP ROW ---
+    #Mission execution (function based on DJI's SKD example)
+    def execute_mission():
+        tello = Tello()
+        try:
+            with open("command.txt", "r") as f:
+                commands = f.readlines()
+        except FileNotFoundError:
+            ui.notify("Error: command.txt not found! Please generate a path first.", color='negative')
+            return
+
+        for cmd in commands:
+            cmd = cmd.strip()
+            if cmd:
+                tello.send_command(cmd)
+    
+    async def auto_start():
+
+        #Notify user that the mission is starting
+        ui.notify('Initializing mission...', color='warning')
         
-        # Video Feed
-        # Changed min-h-[400px] to h-full
-        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
-            ui.label('Video feed').classes('text-3xl tracking-widest text-gray-400')
-
-        # LiDAR
-        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
-            ui.label('LiDAR').classes('text-3xl tracking-widest text-gray-400')
-
-
-        # --- BOTTOM ROW ---
+        #Wait a few seconds
+        await asyncio.sleep(3)
         
-        # Compass
-        # Changed min-h-[250px] to h-full
-        with ui.card().classes('col-span-1 h-full items-center justify-center border border-gray-700'):
-            # Made the circle dynamically scale instead of hardcoded 48x48
-            with ui.element('div').classes('aspect-square h-[80%] max-h-[200px] rounded-full border-2 border-gray-400 flex items-center justify-center'):
-                ui.label('Compass').classes('text-xl tracking-widest text-gray-400')
+        #Start the streamer object
+        streamer.start()
+        ui.notify('Executing commands from command.txt', color='info')
 
-        # Speed, Battery, Mode
-        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
-            ui.label('Speed, Battery, Mode').classes('text-3xl tracking-widest text-gray-400')
-
-        def waypoints() -> None:
-            print("Waypoints")
-
-        # Map
-        with ui.card().classes('col-span-1 h-full items-center justify-center border border-gray-700'):
-            ui.leaflet(center=(51.505, -0.09))
+        #Running mission in a background thread
+        await run.io_bound(execute_mission)
+        
+        #Stop streaming and display message
+        streamer.stop()
+        ui.notify('Mission Complete!', color='positive')
+    
+    ui.timer(0.5,auto_start,once=True)
 
 @ui.page('/signup', title='Sign Up')
 def signup():
@@ -452,7 +584,6 @@ def analysis():
         mode_toggle=ui.toggle(['Start', 'Goal', 'Obstacle', 'Erase'], value='Obstacle').classes('mr-4')
         ui.button('Find Path', on_click=solve, color='green')
         ui.button('Clear Map', on_click=clear_grid, color='red').props('outline')
-        ui.button('Send to Tello', on_click=lambda: build_commands_file(state['matrix']))
 
     def change_size():
         clear_grid()
@@ -460,7 +591,7 @@ def analysis():
 
     with ui.row().classes('items-center mb-4'):
         rows_input=ui.number(label='Number of rows', value=15).props('min=5 max=50 step=1')
-        cols_input =ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
+        cols_input=ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
         ui.button('Change size', on_click=change_size)
 
     @ui.refreshable
