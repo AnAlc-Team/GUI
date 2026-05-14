@@ -31,6 +31,7 @@ import time
 #Import custom scripts
 import navui
 import logout
+import updater
 
 #Import the Tello script
 from tello import Tello
