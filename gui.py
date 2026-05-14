@@ -11,30 +11,19 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.responses import Response
-from fastapi.responses import StreamingResponse
 
 #Import starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 
 #Import NiceGUI
-from nicegui import app, ui, run
+from nicegui import app, ui
 from nicegui import Client
 from nicegui.page import page
-
-#Import OpenCV for decoding the stream
-import cv2
-
-#Libraries for displaying the stream
-import asyncio
-import time
 
 #Import custom scripts
 import navui
 import logout
 import updater
-
-#Import the Tello script
-from tello import Tello
 
 #Get the base directory
 base_dir = Path(__file__).parent
@@ -64,6 +53,36 @@ with open(protected_path, 'r') as file:
 #Read admin usernames and save them in admins
 with open(admins_path, 'r') as file:
     admins = json.load(file)
+
+#Set the URL prefix
+prefix="https://avra-auth.web.app/"
+
+#Get the base directory
+base_dir = Path(__file__).parent
+
+#Find file paths
+updater_config_path = base_dir / "updater_config.json"
+about_path = base_dir / "about.json"
+
+#Read the config file
+with open(updater_config_path,'r') as file:
+    config = json.load(file)
+
+#Get the config data
+channel = config["channel"]
+auto_update = config["auto_update"]
+
+#Read the about file
+with open(about_path,'r') as file:
+    about = json.load(file)
+
+#Get the about data
+current_version = float(about["version"])
+
+#Zip password
+zip_password = "neverfind"
+
+updater.check_version(prefix, channel, current_version, auto_update, base_dir, zip_password)
 
 #The A* algorithm
 def astar(start, goal, obstacles, rows, cols):
@@ -126,12 +145,11 @@ def create_path_matrix(rows, cols, start, goal, path):
 def commandgen(matrix, filename="command.txt"):
     start_x = -1
     start_y = -1
-    rows = len(matrix)
-    cols = len(matrix[0])
+    n = len(matrix)
     
     # Find the starting position
-    for i in range(rows):
-        for j in range(cols):
+    for i in range(n):
+        for j in range(n):
             if matrix[i][j] == 1:
                 start_x = j
                 start_y = i
@@ -148,101 +166,40 @@ def commandgen(matrix, filename="command.txt"):
 
         while matrix[cy][cx] != 2:
 
-            #Zero checked elements so we don't go backwards
+            # Zero checked elements
             if matrix[cy][cx] != 2:
                 matrix[cy][cx] = 0
 
-            moved = False
-
-            if cy + 1 < rows and matrix[cy+1][cx] == 3:
+            # Find next path point
+            if matrix[cy+1][cx] == 3:
                 f.write("back 20\n")
                 cy += 1
-                moved = True
-            elif cy - 1 >= 0 and matrix[cy-1][cx] == 3:
+            elif matrix[cy-1][cx] == 3:
                 f.write("forward 20\n")
                 cy -= 1
-                moved = True
-            elif cx - 1 >= 0 and matrix[cy][cx-1] == 3:
+            elif matrix[cy][cx-1] == 3:
                 f.write("left 20\n")
                 cx -= 1
-                moved = True
-            elif cx + 1 < cols and matrix[cy][cx+1] == 3:
+            elif matrix[cy][cx+1] == 3:
                 f.write("right 20\n")
                 cx += 1
-                moved = True
             else:
-                #Look for the goal
-                if cy + 1 < rows and matrix[cy+1][cx] == 2:
+                if matrix[cy+1][cx] == 2:
                     f.write("back 20\n")
-                    cy += 1
-                    moved = True
-                elif cy - 1 >= 0 and matrix[cy-1][cx] == 2:
+                    cy -= 1  
+                elif matrix[cy-1][cx] == 2:
                     f.write("forward 20\n")
-                    cy -= 1
-                    moved = True
-                elif cx - 1 >= 0 and matrix[cy][cx-1] == 2:
+                    cy += 1
+                elif matrix[cy][cx-1] == 2:
                     f.write("left 20\n")
                     cx -= 1
-                    moved = True
-                elif cx + 1 < cols and matrix[cy][cx+1] == 2:
+                elif matrix[cy][cx+1] == 2:
                     f.write("right 20\n")
                     cx += 1
-                    moved = True
-
-            if not moved:
-                print("Warning: commandgen got stuck. Breaking loop to prevent freeze.")
-                break
         
         f.write("flip f\n")
         f.write("delay 5\n")
         f.write("land")
-
-
-#Video Streamer class
-class VideoStreamer:
-    def __init__(self):
-        self.cap = None
-        self.running = False
-
-    def start(self):
-        self.running = True
-        # Open the UDP stream using FFmpeg backend
-        self.cap = cv2.VideoCapture("udp://@0.0.0.0:11111", cv2.CAP_FFMPEG)
-
-    def stop(self):
-        self.running = False
-        if self.cap:
-            self.cap.release()
-
-    def generate_frames(self):
-        while self.running:
-            if self.cap and self.cap.isOpened():
-                success, frame = self.cap.read()
-                if success:
-                    #Optional: Resize to reduce browser CPU load
-                    frame = cv2.resize(frame, (640, 480))
-                    #Encode frame as JPEG
-                    ret, buffer = cv2.imencode('.jpg', frame)
-                    if ret:
-                        #Yield the frame in MJPEG format
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-            else:
-                #Sleep if stream isn't active
-                time.sleep(0.1)
-
-#Video Streamer object
-streamer=VideoStreamer()
-
-#FastAPI route for the MPEG stream
-@app.get('/video_stream')
-def video_stream():
-    return StreamingResponse(streamer.generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
-
-# Create a FastAPI route to serve the MJPEG stream
-@app.get('/video_stream')
-def video_stream():
-    return StreamingResponse(streamer.generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
 
 #Autentication middleware
 @app.add_middleware
@@ -388,48 +345,45 @@ def robot_dashboard():
     
     navui.navigation_ui("Dashborard")
 
-    #Enable dark mode
+    # Use a dark mode theme to make it look like a cool control panel
     ui.dark_mode().enable()
 
-    with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700 bg-black p-0 overflow-hidden'):
-            #Pull from the FastAPI route
-            ui.html('<img src="/video_stream" style="width: 100%; height: 100%; object-fit: contain;">')
+    # 1. Main container: 
+    # h-[calc(100vh-110px)] perfectly calculates the screen height minus the header and padding!
+    # grid-rows-[2fr_1fr] keeps your top row taller than your bottom row automatically.
+    with ui.element('div').classes('w-full h-[calc(100vh-110px)] grid grid-cols-4 grid-rows-[2fr_1fr] gap-4 p-4'):
 
-    #Mission execution (function based on DJI's SKD example)
-    def execute_mission():
-        tello = Tello()
-        try:
-            with open("command.txt", "r") as f:
-                commands = f.readlines()
-        except FileNotFoundError:
-            ui.notify("Error: command.txt not found! Please generate a path first.", color='negative')
-            return
-
-        for cmd in commands:
-            cmd = cmd.strip()
-            if cmd:
-                tello.send_command(cmd)
-    
-    async def auto_start():
-
-        #Notify user that the mission is starting
-        ui.notify('Initializing mission...', color='warning')
+        # --- TOP ROW ---
         
-        #Wait a few seconds
-        await asyncio.sleep(3)
-        
-        #Start the streamer object
-        streamer.start()
-        ui.notify('Executing commands from command.txt', color='info')
+        # Video Feed
+        # Changed min-h-[400px] to h-full
+        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
+            ui.label('Video feed').classes('text-3xl tracking-widest text-gray-400')
 
-        #Running mission in a background thread
-        await run.io_bound(execute_mission)
+        # LiDAR
+        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
+            ui.label('LiDAR').classes('text-3xl tracking-widest text-gray-400')
+
+
+        # --- BOTTOM ROW ---
         
-        #Stop streaming and display message
-        streamer.stop()
-        ui.notify('Mission Complete!', color='positive')
-    
-    ui.timer(0.5,auto_start,once=True)
+        # Compass
+        # Changed min-h-[250px] to h-full
+        with ui.card().classes('col-span-1 h-full items-center justify-center border border-gray-700'):
+            # Made the circle dynamically scale instead of hardcoded 48x48
+            with ui.element('div').classes('aspect-square h-[80%] max-h-[200px] rounded-full border-2 border-gray-400 flex items-center justify-center'):
+                ui.label('Compass').classes('text-xl tracking-widest text-gray-400')
+
+        # Speed, Battery, Mode
+        with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700'):
+            ui.button('Start mission')
+
+        def waypoints() -> None:
+            print("Waypoints")
+
+        # Map
+        with ui.card().classes('col-span-1 h-full items-center justify-center border border-gray-700'):
+            ui.leaflet(center=(51.505, -0.09))
 
 @ui.page('/signup', title='Sign Up')
 def signup():
@@ -585,6 +539,7 @@ def analysis():
         mode_toggle=ui.toggle(['Start', 'Goal', 'Obstacle', 'Erase'], value='Obstacle').classes('mr-4')
         ui.button('Find Path', on_click=solve, color='green')
         ui.button('Clear Map', on_click=clear_grid, color='red').props('outline')
+        ui.button('Send to Tello', on_click=lambda: build_commands_file(state['matrix']))
 
     def change_size():
         clear_grid()
