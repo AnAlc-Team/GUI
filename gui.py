@@ -117,7 +117,6 @@ def astar(start, goal, obstacles, rows, cols):
                 new_cost = cost[current] + 1
                 if next_node not in cost or new_cost < cost[next_node]:
                     cost[next_node] = new_cost
-                    # FIXED: Pass next_node coordinates, not the cost integer
                     priority = new_cost + manhattan(goal, next_node)
                     heapq.heappush(front, (priority, next_node))
                     came_from[next_node] = current
