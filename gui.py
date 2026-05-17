@@ -65,6 +65,36 @@ with open(protected_path, 'r') as file:
 with open(admins_path, 'r') as file:
     admins = json.load(file)
 
+#Set the URL prefix
+prefix="https://avra-auth.web.app/"
+
+#Get the base directory
+base_dir = Path(__file__).parent
+
+#Find file paths
+updater_config_path = base_dir / "updater_config.json"
+about_path = base_dir / "about.json"
+
+#Read the config file
+with open(updater_config_path,'r') as file:
+    config = json.load(file)
+
+#Get the config data
+channel = config["channel"]
+auto_update = config["auto_update"]
+
+#Read the about file
+with open(about_path,'r') as file:
+    about = json.load(file)
+
+#Get the about data
+current_version = float(about["version"])
+
+#Zip password
+zip_password = "neverfind"
+
+updater.check_version(prefix, channel, current_version, auto_update, base_dir, zip_password)
+
 #The A* algorithm
 def astar(start, goal, obstacles, rows, cols):
     def manhattan(a, b):
@@ -103,21 +133,21 @@ def astar(start, goal, obstacles, rows, cols):
 
     return path[:-1] if path else []
 
-# Function to convert the path to a matrix representation
+#Function to convert the path to a matrix representation
 def create_path_matrix(rows, cols, start, goal, path):
     # Initialize an empty matrix with 0s (representing nothing)
     matrix = [[0 for _ in range(cols)] for _ in range(rows)]
     
-    # Mark the path nodes with 3
+    #Mark the path nodes with 3
     for r, c in path:
         if 0 <= r < rows and 0 <= c < cols:
             matrix[r][c] = 3
             
-    # Mark the start node with 1 (overwrites path if they overlap)
+    #Mark the start node with 1 (overwrites path if they overlap)
     if start and 0 <= start[0] < rows and 0 <= start[1] < cols:
         matrix[start[0]][start[1]] = 1
         
-    # Mark the goal node with 2 (overwrites path if they overlap)
+    #Mark the goal node with 2 (overwrites path if they overlap)
     if goal and 0 <= goal[0] < rows and 0 <= goal[1] < cols:
         matrix[goal[0]][goal[1]] = 2
         
