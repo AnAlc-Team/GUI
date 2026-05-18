@@ -238,6 +238,10 @@ class VideoStreamer:
         self.blank_frame = buffer.tobytes()
 
     def start(self):
+        # CRITICAL FIX: Prevent multiple threads from spawning on page refresh
+        if self.running:
+            return 
+            
         self.running = True
         # Open the UDP stream in a background thread
         threading.Thread(target=self._init_capture, daemon=True).start()
@@ -256,24 +260,26 @@ class VideoStreamer:
             self.cap = None
 
     def generate_frames(self):
-        # Yield the black frame immediately so the <img> tag has something to render
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + self.blank_frame + b'\r\n')
-               
-        while True: # Keep the HTTP connection open indefinitely
-            if self.running and self.cap and self.cap.isOpened():
-                success, frame = self.cap.read()
-                if success:
-                    frame = cv2.resize(frame, (640, 480))
-                    ret, buffer = cv2.imencode('.jpg', frame)
-                    if ret:
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-                        continue # Skip the sleep if we yielded a frame
-            
-            # If the stream isn't active yet, just wait. 
-            # The browser will happily hold the MJPEG connection open.
-            time.sleep(0.1)
+        try:
+            # Yield the black frame immediately
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + self.blank_frame + b'\r\n')
+                   
+            while True:
+                if self.running and self.cap and self.cap.isOpened():
+                    success, frame = self.cap.read()
+                    if success:
+                        frame = cv2.resize(frame, (640, 480))
+                        ret, buffer = cv2.imencode('.jpg', frame)
+                        if ret:
+                            yield (b'--frame\r\n'
+                                   b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                            continue 
+                
+                time.sleep(0.1)
+                
+        except Exception:
+            pass
 
 #Video Streamer object
 streamer=VideoStreamer()
