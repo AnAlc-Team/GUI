@@ -27,10 +27,13 @@ import cv2
 #Libraries for displaying the stream
 import asyncio
 import time
+import threading
+import numpy as np
 
 #Import custom scripts
 import navui
 import logout
+import updater
 
 #Import the Tello script
 from tello import Tello
@@ -224,48 +227,58 @@ def commandgen(matrix, filename="command.txt"):
         f.write("land")
 
 
-#Video Streamer class
 class VideoStreamer:
     def __init__(self):
         self.cap = None
         self.running = False
+        
+        # Create a 640x480 black placeholder frame
+        blank_image = np.zeros((480, 640, 3), dtype=np.uint8)
+        ret, buffer = cv2.imencode('.jpg', blank_image)
+        self.blank_frame = buffer.tobytes()
 
     def start(self):
         self.running = True
-        # Open the UDP stream using FFmpeg backend
-        self.cap = cv2.VideoCapture("udp://@0.0.0.0:11111", cv2.CAP_FFMPEG)
+        # Open the UDP stream in a background thread
+        threading.Thread(target=self._init_capture, daemon=True).start()
+
+    def _init_capture(self):
+        # Keep trying to connect as long as the streamer is running
+        while self.running and (self.cap is None or not self.cap.isOpened()):
+            self.cap = cv2.VideoCapture("udp://@0.0.0.0:11111", cv2.CAP_FFMPEG)
+            if not self.cap.isOpened():
+                time.sleep(0.5) 
 
     def stop(self):
         self.running = False
         if self.cap:
             self.cap.release()
+            self.cap = None
 
     def generate_frames(self):
-        while self.running:
-            if self.cap and self.cap.isOpened():
+        # Yield the black frame immediately so the <img> tag has something to render
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + self.blank_frame + b'\r\n')
+               
+        while True: # Keep the HTTP connection open indefinitely
+            if self.running and self.cap and self.cap.isOpened():
                 success, frame = self.cap.read()
                 if success:
-                    #Optional: Resize to reduce browser CPU load
                     frame = cv2.resize(frame, (640, 480))
-                    #Encode frame as JPEG
                     ret, buffer = cv2.imencode('.jpg', frame)
                     if ret:
-                        #Yield the frame in MJPEG format
                         yield (b'--frame\r\n'
                                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-            else:
-                #Sleep if stream isn't active
-                time.sleep(0.1)
+                        continue # Skip the sleep if we yielded a frame
+            
+            # If the stream isn't active yet, just wait. 
+            # The browser will happily hold the MJPEG connection open.
+            time.sleep(0.1)
 
 #Video Streamer object
 streamer=VideoStreamer()
 
 #FastAPI route for the MPEG stream
-@app.get('/video_stream')
-def video_stream():
-    return StreamingResponse(streamer.generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
-
-# Create a FastAPI route to serve the MJPEG stream
 @app.get('/video_stream')
 def video_stream():
     return StreamingResponse(streamer.generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
@@ -431,7 +444,7 @@ def robot_dashboard():
     #Mission execution (function based on DJI's SDK example)
     def execute_mission():
         global tello_instance
-        # Only initialize the drone connection once
+        #Only initialize the drone connection once
         if tello_instance is None:
             tello_instance = Tello()
             
@@ -439,7 +452,7 @@ def robot_dashboard():
             with open("command.txt", "r") as f:
                 commands = f.readlines()
         except FileNotFoundError:
-            # Replaced ui.notify with print. Calling ui elements in a background thread crashes the app.
+            #Replaced ui.notify with print. Calling ui elements in a background thread crashes the app.
             print("Error: command.txt not found! Please generate a path first.")
             return
 
