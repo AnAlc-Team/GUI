@@ -31,7 +31,6 @@ import time
 #Import custom scripts
 import navui
 import logout
-import updater
 
 #Import the Tello script
 from tello import Tello
@@ -92,8 +91,6 @@ current_version = float(about["version"])
 
 #Zip password
 zip_password = "neverfind"
-
-updater.check_version(prefix, channel, current_version, auto_update, base_dir, zip_password)
 
 #The A* algorithm
 def astar(start, goal, obstacles, rows, cols):
@@ -173,7 +170,7 @@ def commandgen(matrix, filename="command.txt"):
         f.write("command\n")
         f.write("streamon\n")
         f.write("takeoff\n")
-        f.write("delay 5\n")
+        f.write("up 100\n")
 
         while matrix[cy][cx] != 2:
 
@@ -184,37 +181,37 @@ def commandgen(matrix, filename="command.txt"):
             moved = False
 
             if cy + 1 < rows and matrix[cy+1][cx] == 3:
-                f.write("back 20\n")
+                f.write("back 100\n")
                 cy += 1
                 moved = True
             elif cy - 1 >= 0 and matrix[cy-1][cx] == 3:
-                f.write("forward 20\n")
+                f.write("forward 100\n")
                 cy -= 1
                 moved = True
             elif cx - 1 >= 0 and matrix[cy][cx-1] == 3:
-                f.write("left 20\n")
+                f.write("left 100\n")
                 cx -= 1
                 moved = True
             elif cx + 1 < cols and matrix[cy][cx+1] == 3:
-                f.write("right 20\n")
+                f.write("right 100\n")
                 cx += 1
                 moved = True
             else:
                 #Look for the goal
                 if cy + 1 < rows and matrix[cy+1][cx] == 2:
-                    f.write("back 20\n")
+                    f.write("back 100\n")
                     cy += 1
                     moved = True
                 elif cy - 1 >= 0 and matrix[cy-1][cx] == 2:
-                    f.write("forward 20\n")
+                    f.write("forward 100\n")
                     cy -= 1
                     moved = True
                 elif cx - 1 >= 0 and matrix[cy][cx-1] == 2:
-                    f.write("left 20\n")
+                    f.write("left 100\n")
                     cx -= 1
                     moved = True
                 elif cx + 1 < cols and matrix[cy][cx+1] == 2:
-                    f.write("right 20\n")
+                    f.write("right 100\n")
                     cx += 1
                     moved = True
 
@@ -412,10 +409,17 @@ def login(redirect_to: str = '/') -> RedirectResponse | None:
 def protected_page() -> None:
     ui.label("Hi admin!")
 
+# Create a global instance so the socket isn't bound multiple times
+tello_instance = None
+
 @ui.page('/dashboard')
 def robot_dashboard():
     
-    navui.navigation_ui("Dashborard")
+    navui.navigation_ui("Dashboard")
+    
+    with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700 bg-black p-0 overflow-hidden'):
+            #Pull from the FastAPI route
+            ui.html('<img src="/video_stream" style="width: 100%; height: 100%; object-fit: contain;">')
 
     #Enable dark mode
     ui.dark_mode().enable()
@@ -424,20 +428,33 @@ def robot_dashboard():
             #Pull from the FastAPI route
             ui.html('<img src="/video_stream" style="width: 100%; height: 100%; object-fit: contain;">')
 
-    #Mission execution (function based on DJI's SKD example)
+    #Mission execution (function based on DJI's SDK example)
     def execute_mission():
-        tello = Tello()
+        global tello_instance
+        # Only initialize the drone connection once
+        if tello_instance is None:
+            tello_instance = Tello()
+            
         try:
             with open("command.txt", "r") as f:
                 commands = f.readlines()
         except FileNotFoundError:
-            ui.notify("Error: command.txt not found! Please generate a path first.", color='negative')
+            # Replaced ui.notify with print. Calling ui elements in a background thread crashes the app.
+            print("Error: command.txt not found! Please generate a path first.")
             return
 
         for cmd in commands:
             cmd = cmd.strip()
             if cmd:
-                tello.send_command(cmd)
+                # Intercept the 'delay' command locally so the drone doesn't error out
+                if cmd.startswith("delay"):
+                    try:
+                        delay_time = float(cmd.split(" ")[1])
+                        time.sleep(delay_time)
+                    except (IndexError, ValueError):
+                        time.sleep(5)
+                else:
+                    tello_instance.send_command(cmd)
     
     async def auto_start():
 
