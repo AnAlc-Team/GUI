@@ -151,7 +151,10 @@ def create_path_matrix(rows, cols, start, goal, path):
         
     commandgen(matrix)
 
+step=100
+
 def commandgen(matrix, filename="command.txt"):
+    global step
     start_x = -1
     start_y = -1
     rows = len(matrix)
@@ -183,37 +186,37 @@ def commandgen(matrix, filename="command.txt"):
             moved = False
 
             if cy + 1 < rows and matrix[cy+1][cx] == 3:
-                f.write("back 100\n")
+                f.write("back {step}\n")
                 cy += 1
                 moved = True
             elif cy - 1 >= 0 and matrix[cy-1][cx] == 3:
-                f.write("forward 100\n")
+                f.write("forward {step}\n")
                 cy -= 1
                 moved = True
             elif cx - 1 >= 0 and matrix[cy][cx-1] == 3:
-                f.write("left 100\n")
+                f.write("left {step}\n")
                 cx -= 1
                 moved = True
             elif cx + 1 < cols and matrix[cy][cx+1] == 3:
-                f.write("right 100\n")
+                f.write("right {step}\n")
                 cx += 1
                 moved = True
             else:
                 #Look for the goal
                 if cy + 1 < rows and matrix[cy+1][cx] == 2:
-                    f.write("back 100\n")
+                    f.write("back {step}\n")
                     cy += 1
                     moved = True
                 elif cy - 1 >= 0 and matrix[cy-1][cx] == 2:
-                    f.write("forward 100\n")
+                    f.write("forward {step}\n")
                     cy -= 1
                     moved = True
                 elif cx - 1 >= 0 and matrix[cy][cx-1] == 2:
-                    f.write("left 100\n")
+                    f.write("left {step}\n")
                     cx -= 1
                     moved = True
                 elif cx + 1 < cols and matrix[cy][cx+1] == 2:
-                    f.write("right 100\n")
+                    f.write("right {step}\n")
                     cx += 1
                     moved = True
 
