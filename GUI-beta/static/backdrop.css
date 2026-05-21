@@ -1,0 +1,19 @@
+body::before {
+    content: "";
+    position: fixed;
+    top: -100%;
+    left: -100%;
+    width: 300%;
+    height: 300%;
+    z-index: -1;
+    pointer-events: none;
+    
+    /* Just use the one combined image! */
+    background-image: url("/static/combined.jpg");
+    
+    /* Adjust this width until both logos look the right size */
+    background-size: 300px; 
+    
+    background-repeat: repeat;
+    transform: rotate(-15deg);
+}

@@ -1,0 +1,11 @@
+command
+streamon
+takeoff
+forward 5
+forward 5
+forward 5
+forward 5
+forward 5
+flip f
+delay 5
+land
