@@ -768,7 +768,7 @@ def astar_page():
 
     draw_grid()
 
-@ui.page('/dijkstar',title='Dijkstra')
+@ui.page('/dijkstra',title='Dijkstra')
 def dijkstra_page():
     ui.add_head_html('<style>.q-btn .q-focus-helper { display: none !important; }</style>')
     state = {
