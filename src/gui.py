@@ -534,9 +534,6 @@ def robot_dashboard():
     
     navui.navigation_ui("Dashboard")
 
-    #Enable dark mode
-    ui.dark_mode().enable()
-
     with ui.card().classes('col-span-2 h-full items-center justify-center border border-gray-700 bg-black p-0 overflow-hidden'):
             #Pull from the FastAPI route
             ui.html('<img src="/video_stream" style="width: 100%; height: 100%; object-fit: contain;">')
