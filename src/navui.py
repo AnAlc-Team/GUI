@@ -38,10 +38,10 @@ def navigation_ui(title):
             
             ui.button('Home', icon='home', on_click=lambda: ui.navigate.to('/')).classes('w-full text-lg').props('flat color=black align=left')
             ui.button('Dashboard', icon='liquor', on_click=lambda: ui.navigate.to('/dashboard')).classes('w-full text-lg').props('flat color=black align=left')
-            ui.button('Settings', icon='settings', on_click=lambda: ui.navigate.to('/settings')).classes('w-full text-lg').props('flat color=black align=left')
             ui.button('A*', icon='calculate', on_click=lambda: ui.navigate.to('/astar')).classes('w-full text-lg').props('flat color=black align=left')
             ui.button('Dijkstra', icon='route', on_click=lambda: ui.navigate.to('/dijkstra')).classes('w-full text-lg').props('flat color=black align=left')
             ui.button('Grassfire', icon='local_fire_department', on_click=lambda: ui.navigate.to('/grassfire')).classes('w-full text-lg').props('flat color=black align=left')
+            ui.button('Settings', icon='settings', on_click=lambda: ui.navigate.to('/signup')).classes('w-full text-lg').props('flat color=black align=left')
 
         ui.space()
 
