@@ -49,6 +49,7 @@ passwords_path = base_dir / 'users.json'
 unrestricted_path = base_dir / 'unrestricted.json'
 protected_path = base_dir / 'protected.json'
 admins_path = base_dir / 'admins.json'
+image_path = base_dir / 'static' / 'photo.png'
 
 #Add static files
 app.add_static_files('/static', str(base_dir / 'static'))
@@ -591,7 +592,7 @@ def robot_dashboard():
 
         # Βattery
         if battery:
-            ui.notify(f'Mission Complete! 🔋 Drone Battery: {battery}%', color='positive', timeout=8000)
+            ui.notify(f'Mission Complete! Drone Battery: {battery}%', color='positive', timeout=8000)
         else:
             ui.notify('Mission Complete!', color='positive')
     
@@ -650,8 +651,11 @@ def about():
     
     navui.navigation_ui('About')
 
-    with ui.card().classes('absolute-center items-center p-6'):
-        ui.label('AVRA AUTh GUI')
+    with ui.column().classes('w-full items-center'):
+    
+        with ui.card().classes('w-[500px] items-center'):
+            ui.label('AVRA AUTH GUI').classes('text-lg font-bold')
+            ui.image(image_path).classes('w-full')
 
 #Tello code
 def build_commands_file(matrix):
