@@ -529,7 +529,7 @@ def protected_page() -> None:
 # Create a global instance so the socket isn't bound multiple times
 tello_instance = None
 
-@ui.page('/dashboard')
+@ui.page('/dashboard',title = 'Dashboard')
 def robot_dashboard():
     
     navui.navigation_ui("Dashboard")
