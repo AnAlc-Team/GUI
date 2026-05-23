@@ -44,7 +44,7 @@ from tello import Tello
 base_dir = Path(__file__).parent
 
 #Find file paths
-favicon_path = base_dir / 'avra.jpg'
+favicon_path = base_dir / 'static' / 'avra.jpg'
 passwords_path = base_dir / 'users.json'
 unrestricted_path = base_dir / 'unrestricted.json'
 protected_path = base_dir / 'protected.json'
@@ -751,6 +751,16 @@ def astar_page():
         cols_input=ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
         ui.button('Change size', on_click=change_size)
 
+    def update_step():
+        global step
+
+        step = int(step_input.value)
+        ui.notify(f'Step is now {step}')
+
+    with ui.row().classes('items-center mb-4'):
+        step_input = ui.number(label='Step [cm]', value=20, min=5, max=500, step=1, format='%.0f')
+        ui.button('Set step', on_click=update_step)
+
     @ui.refreshable
     def draw_grid():
         cells.clear()
@@ -868,6 +878,16 @@ def dijkstra_page():
         cols_input=ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
         ui.button('Change size', on_click=change_size)
 
+    def update_step():
+        global step
+
+        step = int(step_input.value)
+        ui.notify(f'Step is now {step}')
+
+    with ui.row().classes('items-center mb-4'):
+        step_input = ui.number(label='Step [cm]', value=20, min=5, max=500, step=1, format='%.0f')
+        ui.button('Set step', on_click=update_step)
+
     @ui.refreshable
     def draw_grid():
         cells.clear()
@@ -984,6 +1004,16 @@ def grassfire_page():
         rows_input=ui.number(label='Number of rows', value=15).props('min=5 max=50 step=1')
         cols_input=ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
         ui.button('Change size', on_click=change_size)
+
+    def update_step():
+        global step
+
+        step = int(step_input.value)
+        ui.notify(f'Step is now {step}')
+
+    with ui.row().classes('items-center mb-4'):
+        step_input = ui.number(label='Step [cm]', value=20, min=5, max=500, step=1, format='%.0f')
+        ui.button('Set step', on_click=update_step)
 
     @ui.refreshable
     def draw_grid():
