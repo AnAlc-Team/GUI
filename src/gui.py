@@ -247,7 +247,7 @@ def create_path_matrix(rows, cols, start, goal, path):
         
     commandgen(matrix)
 
-step=5
+step = 30 # Default step value, can be updated in the Step page
 
 def commandgen(matrix, filename="command.txt"):
     global step
@@ -273,14 +273,25 @@ def commandgen(matrix, filename="command.txt"):
         f.write("takeoff\n")
         #f.write("up 100\n")
 
-        while matrix[cy][cx] != 2:
-
-            #Zero checked elements so we don't go backwards
-            if matrix[cy][cx] != 2:
-                matrix[cy][cx] = 0
-
+        while True:
+            matrix[cy][cx] = 0
             moved = False
 
+            # 1. Search If we found the goal(2)
+            if cy + 1 < rows and matrix[cy+1][cx] == 2:
+                f.write(f"back {step}\n")
+                break 
+            elif cy - 1 >= 0 and matrix[cy-1][cx] == 2:
+                f.write(f"forward {step}\n")
+                break
+            elif cx - 1 >= 0 and matrix[cy][cx-1] == 2:
+                f.write(f"left {step}\n")
+                break
+            elif cx + 1 < cols and matrix[cy][cx+1] == 2:
+                f.write(f"right {step}\n")
+                break
+
+            #2. Ιf 2 not found , search for 3 
             if cy + 1 < rows and matrix[cy+1][cx] == 3:
                 f.write(f"back {step}\n")
                 cy += 1
@@ -297,25 +308,8 @@ def commandgen(matrix, filename="command.txt"):
                 f.write(f"right {step}\n")
                 cx += 1
                 moved = True
-            else:
-                #Look for the goal
-                if cy + 1 < rows and matrix[cy+1][cx] == 2:
-                    f.write(f"back {step}\n")
-                    cy += 1
-                    moved = True
-                elif cy - 1 >= 0 and matrix[cy-1][cx] == 2:
-                    f.write(f"forward {step}\n")
-                    cy -= 1
-                    moved = True
-                elif cx - 1 >= 0 and matrix[cy][cx-1] == 2:
-                    f.write(f"left {step}\n")
-                    cx -= 1
-                    moved = True
-                elif cx + 1 < cols and matrix[cy][cx+1] == 2:
-                    f.write(f"right {step}\n")
-                    cx += 1
-                    moved = True
 
+            #3. Safety Check
             if not moved:
                 print("Warning: commandgen got stuck. Breaking loop to prevent freeze.")
                 break
@@ -323,6 +317,8 @@ def commandgen(matrix, filename="command.txt"):
         f.write("flip f\n")
         f.write("delay 5\n")
         f.write("land")
+        
+        
 
 
 class VideoStreamer:
@@ -539,6 +535,7 @@ def robot_dashboard():
             ui.html('<img src="/video_stream" style="width: 100%; height: 100%; object-fit: contain;">')
 
     #Mission execution (function based on DJI's SDK example)
+    #Mission execution (function based on DJI's SDK example)
     def execute_mission():
         global tello_instance
         #Only initialize the drone connection once
@@ -551,7 +548,7 @@ def robot_dashboard():
         except FileNotFoundError:
             #Replaced ui.notify with print. Calling ui elements in a background thread crashes the app.
             print("Error: command.txt not found! Please generate a path first.")
-            return
+            return None # Επιστρέφει None αν υπάρξει σφάλμα
 
         for cmd in commands:
             cmd = cmd.strip()
@@ -565,6 +562,14 @@ def robot_dashboard():
                         time.sleep(5)
                 else:
                     tello_instance.send_command(cmd)
+        
+        #BATTERY - METALLICA
+        try:
+            battery_level = tello_instance.get_battery()
+            return battery_level
+        except Exception as e:
+            print(f"Couldn't Return The Battery Level: {e}")
+            return None
     
     async def auto_start():
 
@@ -578,14 +583,21 @@ def robot_dashboard():
         streamer.start()
         ui.notify('Executing commands from command.txt', color='info')
 
-        #Running mission in a background thread
-        await run.io_bound(execute_mission)
+        #Running mission in a background thread και αποθήκευση της μπαταρίας
+        battery = await run.io_bound(execute_mission)
         
-        #Stop streaming and display message
+        #Stop streaming
         streamer.stop()
-        ui.notify('Mission Complete!', color='positive')
+
+        # Βattery
+        if battery:
+            ui.notify(f'Mission Complete! 🔋 Drone Battery: {battery}%', color='positive', timeout=8000)
+        else:
+            ui.notify('Mission Complete!', color='positive')
     
-    ui.timer(0.5,auto_start,once=True)
+    # Added Start Mission Button
+    with ui.row().classes('w-full justify-center mt-4 mb-4'):
+        ui.button('Start mission', on_click=auto_start)
 
 @ui.page('/signup', title='Sign Up')
 def signup():
@@ -751,16 +763,6 @@ def astar_page():
         cols_input=ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
         ui.button('Change size', on_click=change_size)
 
-    def update_step():
-        global step
-
-        step = int(step_input.value)
-        ui.notify(f'Step is now {step}')
-
-    with ui.row().classes('items-center mb-4'):
-        step_input = ui.number(label='Step [cm]', value=20, min=5, max=500, step=1, format='%.0f')
-        ui.button('Set step', on_click=update_step)
-
     @ui.refreshable
     def draw_grid():
         cells.clear()
@@ -877,16 +879,6 @@ def dijkstra_page():
         rows_input=ui.number(label='Number of rows', value=15).props('min=5 max=50 step=1')
         cols_input=ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
         ui.button('Change size', on_click=change_size)
-
-    def update_step():
-        global step
-
-        step = int(step_input.value)
-        ui.notify(f'Step is now {step}')
-
-    with ui.row().classes('items-center mb-4'):
-        step_input = ui.number(label='Step [cm]', value=20, min=5, max=500, step=1, format='%.0f')
-        ui.button('Set step', on_click=update_step)
 
     @ui.refreshable
     def draw_grid():
@@ -1005,16 +997,6 @@ def grassfire_page():
         cols_input=ui.number(label='Number of columns', value=15).props('min=5 max=50 step=1')
         ui.button('Change size', on_click=change_size)
 
-    def update_step():
-        global step
-
-        step = int(step_input.value)
-        ui.notify(f'Step is now {step}')
-
-    with ui.row().classes('items-center mb-4'):
-        step_input = ui.number(label='Step [cm]', value=20, min=5, max=500, step=1, format='%.0f')
-        ui.button('Set step', on_click=update_step)
-
     @ui.refreshable
     def draw_grid():
         cells.clear()
@@ -1028,7 +1010,25 @@ def grassfire_page():
         update_grid()
 
     draw_grid()
-
+    
+@ui.page('/step',title='Step')
+def step_page():
+    
+    navui.navigation_ui('Step')
+    
+    with ui.card().classes('absolute-center items-center p-6'):
+        ui.label('Step (cm)').classes('text-xl font-bold mb-4')
+        
+        step_input = ui.number(value=step, min=20, max=500, step=5)
+        
+        def update_step():
+            global step
+            step = int(step_input.value) 
+            ui.notify(f'Step Updated to: {step} [cm]', color='positive')
+        
+        with ui.row().classes('w-full justify-center mt-4 mb-4'):
+            ui.button('Update', on_click=update_step)
+        
 if __name__ in {'__main__', '__mp_main__'}:
 
     #Run the GUI on localhost:8080
