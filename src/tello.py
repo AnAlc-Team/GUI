@@ -71,3 +71,13 @@ class Tello:
 
     def get_log(self):
         return self.log
+    def get_battery(self):
+        self.send_command("battery?")
+        import time
+        time.sleep(0.5) 
+        if self.log and self.log[-1].response:
+            res = self.log[-1].response
+            if isinstance(res, bytes):
+                return res.decode('utf-8').strip()
+            return str(res).strip()
+        return "N/A"
