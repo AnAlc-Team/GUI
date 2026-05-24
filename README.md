@@ -1,6 +1,6 @@
 Hi to whoever is reading this! Here you will find the report and the code for our assignment. The report is in the doc folder.
 
-Before you run our code, you must install the NiceGUI, OpenCV, NumPy and Requests libraries using pip. If you are on linux, open a terminal on this directory and run the command below:
+Before you run our code, you must install the NiceGUI, OpenCV, NumPy and Requests libraries using pip. If you are on Linux, open a terminal on this directory and run the command below:
 ```bash
 chmod +x init.sh
 ./init.sh
