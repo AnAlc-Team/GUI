@@ -9,7 +9,7 @@ Then, navigate to src and run the gui.py script. Once the server starts, open lo
 
 P.S. Our code contains easter-eggs, just like the one below ;-)
 
-Open thise file in VS Code, right click the tab and click 'Open Preview' to view to correctly.
+Open this file in VS Code, right click the tab and click 'Open Preview' to view to correctly.
 
 ```mermaid
 flowchart LR
