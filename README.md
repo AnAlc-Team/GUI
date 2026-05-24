@@ -1,4 +1,11 @@
-Hi to whoever is reading this! Here you will find the report and the code for our assignment. The report is in the doc folder. Before you run our code, you must install the NiceGUI, OpenCV, NumPy and Requests libraries using pip (if you are on linux, just run the init.sh file). Then, navigate to src and run the gui.py script. Once the server starts, open localhost on port 8080 by ctrl+clicking the link from the terminal. Use the burger menu to select an algorithm, add start, goal and obstacles and click "find path" to generate the command file for the drone. Go to the dashboard and click start mission to start the mission. Use the updater.py to update the UI. That's all!
+Hi to whoever is reading this! Here you will find the report and the code for our assignment. The report is in the doc folder.
+
+Before you run our code, you must install the NiceGUI, OpenCV, NumPy and Requests libraries using pip. If you are on linux, open a terminal on this directory and run the command below:
+'''bash
+chmod +x init.sh
+./init.sh
+'''
+Then, navigate to src and run the gui.py script. Once the server starts, open localhost on port 8080 by ctrl+clicking the link from the terminal. Use the burger menu to select an algorithm, add start, goal and obstacles and click "find path" to generate the command file for the drone. Go to the dashboard and click start mission to start the mission. Use the updater.py to update the UI. That's all!
 
 P.S. Our code contains easter-eggs, just like the one below ;-)
 
