@@ -11,6 +11,8 @@ P.S. Our code contains easter-eggs, just like the one below ;-)
 
 Open this file in VS Code, right click the tab and click 'Open Preview' to view to correctly.
 
+The A.A. Team
+
 ```mermaid
 flowchart LR
   Sleep[Sleep] --> Wake{Awake?}
