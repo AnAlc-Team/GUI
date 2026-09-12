@@ -45,10 +45,11 @@ base_dir = Path(__file__).parent
 
 #Find file paths
 favicon_path = base_dir / 'static' / 'avra.jpg'
-passwords_path = base_dir / 'users.json'
-unrestricted_path = base_dir / 'unrestricted.json'
-protected_path = base_dir / 'protected.json'
-admins_path = base_dir / 'admins.json'
+passwords_path = base_dir / 'data' / 'users.json'
+unrestricted_path = base_dir / 'config' / 'unrestricted.json'
+protected_path = base_dir / 'config' / 'protected.json'
+admins_path = base_dir / 'config' / 'admins.json'
+
 image_path = base_dir / 'static' / 'photo.png'
 
 #Add static files
