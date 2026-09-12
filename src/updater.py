@@ -13,8 +13,8 @@ prefix="https://avra-auth.web.app/"
 base_dir = Path(__file__).parent
 
 #Find file paths
-updater_config_path = base_dir / "updater_config.json"
-about_path = base_dir / "about.json"
+updater_config_path = base_dir / 'config' / "updater_config.json"
+about_path = base_dir / 'config' / "about.json"
 
 #Read the config file
 with open(updater_config_path,'r') as file:
