@@ -319,9 +319,6 @@ def commandgen(matrix, filename="command.txt"):
         f.write("flip f\n")
         f.write("delay 5\n")
         f.write("land")
-        
-        
-
 
 class VideoStreamer:
     def __init__(self):
